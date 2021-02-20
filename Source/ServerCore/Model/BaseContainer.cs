@@ -18,6 +18,7 @@ namespace ServerOnlineCity.Model
         //public long VersionNum => long.Parse((Version ?? "0").Where(c => Char.IsDigit(c)).Aggregate("0", (r, i) => r + i));
 
         public List<PlayerServer> PlayersAll { get; set; }
+        public PlayerServer PlayerSystem { get { return PlayersAll[0]; } }
 
         [NonSerialized]
         public ConcurrentDictionary<string, PlayerServer> PlayersAllDic;
@@ -43,6 +44,7 @@ namespace ServerOnlineCity.Model
         
         // WorldObject Online
         public List<WorldObjectOnline> WorldObjectOnlineList { get; set; }
+        public List<FactionOnline> FactionOnlineList { get; set; }
 
         [NonSerialized]
         public bool EverybodyLogoff;
@@ -73,6 +75,7 @@ namespace ServerOnlineCity.Model
             Orders = new List<OrderTrade>();
             VersionNum = MainHelper.VersionNum;
             WorldObjectOnlineList = new List<WorldObjectOnline>();
+            FactionOnlineList = new List<FactionOnline>();
         }
 
         public long GetWorldObjectEntryId()

@@ -139,6 +139,8 @@ namespace ServerOnlineCity
                 rep.Save(true);
             });
 
+            //ServerManager.ServerSettings.AutoSaveStatisticsFile SavePlayerStatisticsFile()
+
             //ActiveClientCount = 0;
 
             Connect = new ConnectServer();
@@ -198,7 +200,7 @@ namespace ServerOnlineCity
                 changeInPlayers = true;
 
                 if (player.IsAdmin
-                    || true //todo переделать это на настройки сервера "в чате доступны все, без учета зон контакта"
+                    || true //to do переделать это на настройки сервера "в чате доступны все, без учета зон контакта"
                     )
                 {
                     if (allLogins == null) allLogins = new HashSet<string>(Repository.GetData.PlayersAll.Select(p => p.Public.Login));
@@ -221,10 +223,10 @@ namespace ServerOnlineCity
                         .ToList();
 
                     //те, кто запустил спутники
-                    //todo когда сделаем, то потом, может быть, стоит это убрать для тех кто не построил ещё хотя бы консоль связи
+                    //to do когда сделаем, то потом, может быть, стоит это убрать для тех кто не построил ещё хотя бы консоль связи
 
                     //и те кто географически рядом
-                    //todo
+                    //to do
 
                     //себя и system
                     if (!plNeed.Any(p => p == player.Public.Login)) plNeed.Add(player.Public.Login);
@@ -271,10 +273,7 @@ namespace ServerOnlineCity
 
                         //ChatManager.Instance.AddSystemPostToPublicChat(msg); // раскоментировать, для поста в общий чат
 
-                        Repository.DropUserFromMap(player.Public.Login);
-                        Repository.GetSaveData.DeletePlayerData(player.Public.Login);
-                        player.Public.LastSaveTime = DateTime.MinValue;
-                        Repository.Get.ChangeData = true;
+                        player.AbandonSettlement();
                         Loger.Log("Server " + msg);
                     }
                 }
@@ -366,7 +365,9 @@ namespace ServerOnlineCity
 
                 Func<DateTime, string> dateTimeToStr = dt => dt == DateTime.MinValue ? "" : dt.ToString("yyyy-MM-dd hh:mm:ss", CultureInfo.InvariantCulture);
 
-                var content = "Login;LastOnlineTime;LastOnlineDay;GameDays;BaseCount;CaravanCount;MarketValue;MarketValuePawn;Grants;EnablePVP;EMail;DiscordUserName" + Environment.NewLine;
+                var content = $"Login;LastOnlineTime;LastOnlineDay;GameDays;BaseCount;CaravanCount;MarketValue;MarketValuePawn" +
+                    $";Grants;EnablePVP;EMail;DiscordUserName;IntruderKeys;StartMarketValue;StartMarketValuePawn" +
+                    $";MarketValueBy15Day;MarketValuePawnBy15Day;MarketValueByHour;MarketValuePawnByHour;TicksByHour;HourInGame" + Environment.NewLine;
                 foreach (var player in Repository.GetData.PlayersAll)
                 {
                     var costAll = player.CostWorldObjects();
@@ -382,7 +383,17 @@ namespace ServerOnlineCity
                         $"{player.Public.Grants.ToString()};" +
                         $"{(player.Public.EnablePVP ? 1 : 0)};" +
                         $"{player.Public.EMail};" +
-                        $"{player.Public.DiscordUserName}";
+                        $"{player.Public.DiscordUserName};" +
+                        $"{player.IntruderKeys};" +
+                        $"{player.StartMarketValue};" +
+                        $"{player.StartMarketValuePawn};" +
+                        $"{player.StatMaxDeltaGameMarketValue};" +
+                        $"{player.StatMaxDeltaGameMarketValuePawn};" +
+                        $"{player.StatMaxDeltaRealMarketValue};" +
+                        $"{player.StatMaxDeltaRealMarketValuePawn};" +
+                        $"{player.StatMaxDeltaRealTicks};" +
+                        $"{player.TotalRealSecond / 60f / 60f};"
+                        ;
                     newLine = newLine.Replace(Environment.NewLine, " ")
                         .Replace("/r", "").Replace("/n", "");
 
@@ -413,6 +424,24 @@ namespace ServerOnlineCity
             thread.Start();
         }
 
+        private List<SessionServer> Sessions = new List<SessionServer>();
+
+        /// <summary>
+        /// Обработать в событии все активные сессии. Корректно завершить выбранные сессии только через этот механизм
+        /// </summary>
+        /// <param name="act"></param>
+        private void SessionsAction(Action<SessionServer> act)
+        {
+            lock (Sessions)
+            {
+                for(int i = 0; i < Sessions.Count; i++)
+                {
+                    if (Sessions[i].IsActive) act(Sessions[i]);
+                    if (!Sessions[i].IsActive) Sessions.RemoveAt(i--);
+                }
+            }
+        }
+
         private void DoClient(ConnectClient client)
         {
             SessionServer session = null;
@@ -421,9 +450,24 @@ namespace ServerOnlineCity
             {
                 try
                 {
-                    Loger.Log($"New connect {addrIP} (connects: {ActiveClientCount})");
-                    session = new SessionServer();
-                    session.Do(client);
+                    if (Repository.CheckIsBanIP(addrIP))
+                    {
+                        Loger.Log("Abort connect BanIP " + addrIP);
+                    }
+                    else
+                    {
+                        Loger.Log($"New connect {addrIP} (connects: {ActiveClientCount})");
+                        session = new SessionServer();
+                        lock (Sessions)
+                        {
+                            Sessions.Add(session);
+                        }
+                        session.Do(client, SessionsAction);
+                    }
+                }
+                catch (ObjectDisposedException)
+                {
+                    Loger.Log("Abort connect Relogin " + addrIP);
                 }
                 catch (Transfer.ConnectClient.ConnectSilenceTimeOutException)
                 {

@@ -3,17 +3,19 @@ using System.Collections.Generic;
 using System.Linq;
 using Model;
 using OCUnion;
+using OCUnion.Transfer.Model;
 using ServerOnlineCity.Common;
 using ServerOnlineCity.Model;
 using Transfer;
+using Transfer.ModelMails;
 
 namespace ServerOnlineCity.Services
 {
     internal sealed class PlayInfo : IGenerateResponseContainer
     {
-        public int RequestTypePackage => 11;
+        public int RequestTypePackage => (int)PackageType.Request11;
 
-        public int ResponseTypePackage => 12;
+        public int ResponseTypePackage => (int)PackageType.Response12;
 
         public ModelContainer GenerateModelContainer(ModelContainer request, ServiceContext context)
         {
@@ -25,6 +27,16 @@ namespace ServerOnlineCity.Services
 
         public ModelPlayToClient playInfo(ModelPlayToServer packet, ServiceContext context)
         {
+            if (Repository.CheckIsBanIP(context.AddrIP))
+            {
+                context.Disconnect("New BanIP " + context.AddrIP);
+                return null;
+            }
+            if (context.PossiblyIntruder)
+            {
+                context.Disconnect("Possibly intruder");
+                return null;
+            }
             lock (context.Player)
             {
                 var data = Repository.GetData;
@@ -46,9 +58,12 @@ namespace ServerOnlineCity.Services
                 {
                     Repository.GetSaveData.SavePlayerData(context.Player.Public.Login, packet.SaveFileData, packet.SingleSave);
                     context.Player.Public.LastSaveTime = timeNow;
+
+                    //Действия при сохранении, оно происодит только здесь!
+                    context.Player.MailsConfirmationSave = new List<ModelMail>();
+
                     Repository.Get.ChangeData = true;
                 }
-                context.Player.Public.LastTick = packet.LastTick;
                 if (context.Player.GetKeyReconnect())
                 {
                     toClient.KeyReconnect = context.Player.KeyReconnect1;
@@ -159,6 +174,7 @@ namespace ServerOnlineCity.Services
                     //World Object Online
                     if (ServerManager.ServerSettings.GeneralSettings.EquableWorldObjects)
                     {
+                        //World Object Online
                         try
                         {
                             if (packet.WObjectOnlineToDelete != null && packet.WObjectOnlineToDelete.Count > 0)
@@ -187,25 +203,137 @@ namespace ServerOnlineCity.Services
                         {
                             Loger.Log("ERROR PLAYINFO World Object Online");
                         }
+
+                        //Faction Online
+                        try
+                        {
+                            if (packet.FactionOnlineToDelete != null && packet.FactionOnlineToDelete.Count > 0)
+                            {
+                                data.FactionOnlineList.RemoveAll(data => packet.FactionOnlineToDelete.Any(pkt => ValidateFaction(pkt, data)));
+                            }
+                            if (packet.FactionOnlineToAdd != null && packet.FactionOnlineToAdd.Count > 0)
+                            {
+                                data.FactionOnlineList.AddRange(packet.FactionOnlineToAdd);
+                            }
+                            if (packet.FactionOnlineList != null && packet.FactionOnlineList.Count > 0)
+                            {
+                                if (data.FactionOnlineList.Count == 0)
+                                {
+                                    data.FactionOnlineList = packet.FactionOnlineList;
+                                }
+                                else if (data.FactionOnlineList != null && data.FactionOnlineList.Count > 0)
+                                {
+
+                                    toClient.FactionOnlineToDelete = packet.FactionOnlineList.Where(pkt => !data.FactionOnlineList.Any(data => ValidateFaction(pkt, data))).ToList();
+                                    toClient.FactionOnlineToAdd = data.FactionOnlineList.Where(data => !packet.FactionOnlineList.Any(pkt => ValidateFaction(pkt, data))).ToList();
+                                }
+                            }
+                            toClient.FactionOnlineList = data.FactionOnlineList;
+                        }
+                        catch
+                        {
+                            Loger.Log("ERROR PLAYINFO Faction Online");
+                        }
                     }
 
                     //завершили сбор информации клиенту
                     toClient.WObjects = outWO;
                     toClient.WObjectsToDelete = outWOD;
+
+                    context.Player.WLastUpdateTime = timeNow;
+                    context.Player.WLastTick = packet.LastTick;
+
+                    //обновляем статистические поля
+                    var costAll = context.Player.CostWorldObjects();
+                    if (context.Player.StartMarketValuePawn == 0)
+                    {
+                        context.Player.StartMarketValue = costAll.MarketValue;
+                        context.Player.StartMarketValuePawn = costAll.MarketValuePawn;
+
+                        context.Player.DeltaMarketValue = 0;
+                        context.Player.DeltaMarketValuePawn = 0;
+                    }
+                    else if (context.Player.LastUpdateIsGood && (costAll.MarketValue > 0 || costAll.MarketValuePawn > 0))
+                    {
+                        //считаем дельту
+                        context.Player.DeltaMarketValue = (costAll.MarketValue - context.Player.LastMarketValue);
+                        context.Player.DeltaMarketValuePawn = (costAll.MarketValuePawn - context.Player.LastMarketValuePawn);
+
+                        context.Player.SumDeltaGameMarketValue += context.Player.DeltaMarketValue;
+                        context.Player.SumDeltaGameMarketValuePawn += context.Player.DeltaMarketValuePawn;
+                        context.Player.SumDeltaRealMarketValue += context.Player.DeltaMarketValue;
+                        context.Player.SumDeltaRealMarketValuePawn += context.Player.DeltaMarketValuePawn;
+
+                        if (packet.LastTick - context.Player.StatLastTick > 15 * 60000) // сбор раз в 15 дней
+                        {
+                            if (context.Player.StatMaxDeltaGameMarketValue < context.Player.SumDeltaGameMarketValue)
+                                context.Player.StatMaxDeltaGameMarketValue = context.Player.SumDeltaGameMarketValue;
+                            if (context.Player.StatMaxDeltaGameMarketValuePawn < context.Player.SumDeltaGameMarketValuePawn)
+                                context.Player.StatMaxDeltaGameMarketValuePawn = context.Player.SumDeltaGameMarketValuePawn;
+
+                            context.Player.SumDeltaGameMarketValue = 0;
+                            context.Player.SumDeltaGameMarketValuePawn = 0;
+                            context.Player.StatLastTick = packet.LastTick;
+                        }
+
+                        if (context.Player.SumDeltaRealSecond > 60 * 60) //сбор раз в час
+                        {
+                            if (context.Player.StatMaxDeltaRealMarketValue < context.Player.SumDeltaRealMarketValue)
+                                context.Player.StatMaxDeltaRealMarketValue = context.Player.SumDeltaRealMarketValue;
+                            if (context.Player.StatMaxDeltaRealMarketValuePawn < context.Player.SumDeltaRealMarketValuePawn)
+                                context.Player.StatMaxDeltaRealMarketValuePawn = context.Player.SumDeltaRealMarketValuePawn;
+                            if (context.Player.StatMaxDeltaRealTicks < context.Player.SumDeltaRealTicks)
+                                context.Player.StatMaxDeltaRealTicks = context.Player.SumDeltaRealTicks;
+
+                            context.Player.SumDeltaRealMarketValue = 0;
+                            context.Player.SumDeltaRealMarketValuePawn = 0;
+                            context.Player.SumDeltaRealTicks = 0;
+                            context.Player.SumDeltaRealSecond = 0;
+                        }
+                    }
+                    context.Player.LastUpdateIsGood = costAll.MarketValue > 0 || costAll.MarketValuePawn > 0;
+                    if (context.Player.LastUpdateIsGood)
+                    {
+                        context.Player.LastMarketValue = costAll.MarketValue;
+                        context.Player.LastMarketValuePawn = costAll.MarketValuePawn;
+                    }
+                    var dt = packet.LastTick - context.Player.Public.LastTick;
+                    context.Player.SumDeltaRealTicks += dt;
+                    if (dt > 0)
+                    {
+                        var ds = (long)(timeNow - context.Player.LastUpdateTime).TotalSeconds;
+                        context.Player.SumDeltaRealSecond += ds;
+                        context.Player.TotalRealSecond += ds;
+                    }
+
+                    context.Player.WLastUpdateTime = context.Player.LastUpdateTime;
+                    context.Player.WLastTick = context.Player.Public.LastTick;
                     context.Player.LastUpdateTime = timeNow;
+                    context.Player.Public.LastTick = packet.LastTick;
+                }
+
+                //обновляем состояние отложенной отправки писем
+                if (context.Player.FunctionMails.Count > 0)
+                {
+                    for (int i = 0; i < context.Player.FunctionMails.Count; i++)
+                    {
+                        var needRemove = context.Player.FunctionMails[i].Run(context);
+                        if (needRemove) context.Player.FunctionMails.RemoveAt(i--);
+                    }
                 }
 
                 //прикрепляем письма
                 //если есть команда на отключение без сохранения, то посылаем только одно это письмо
-                var md = context.Player.Mails.FirstOrDefault(m => m.Type == ModelMailTradeType.AttackCancel);
+                var md = context.Player.Mails.FirstOrDefault(m => m is ModelMailAttackCancel);
                 if (md == null)
                 {
                     toClient.Mails = context.Player.Mails;
-                    context.Player.Mails = new List<ModelMailTrade>();
+                    context.Player.MailsConfirmationSave.AddRange(context.Player.Mails.Where(m => m.NeedSaveGame).ToList());
+                    context.Player.Mails = new List<ModelMail>();
                 }
                 else
                 {
-                    toClient.Mails = new List<ModelMailTrade>() { md };
+                    toClient.Mails = new List<ModelMail>() { md };
                     context.Player.Mails.Remove(md);
                 }
 
@@ -215,6 +343,14 @@ namespace ServerOnlineCity.Services
                 //флаг, что на клиента кто-то напал и он должен запросить подробности
                 toClient.AreAttacking = context.Player.AttackData != null && context.Player.AttackData.Host == context.Player && context.Player.AttackData.State == 1;
 
+                if (toClient.Mails.Count > 0)
+                {
+                    foreach (var mail in toClient.Mails)
+                    {
+                        Loger.Log($"DownloadMail {mail.GetType().Name} {mail.From.Login}->{mail.To.Login} {mail.ContentString()}");
+                    }
+                }
+
                 return toClient;
             }
         }
@@ -223,6 +359,17 @@ namespace ServerOnlineCity.Services
         {
             if(pkt.Name == data.Name
                 && pkt.Tile == data.Tile)
+            {
+                return true;
+            }
+            return false;
+        }
+
+         private static bool ValidateFaction(FactionOnline pkt, FactionOnline data)
+        {
+            if (pkt.DefName == data.DefName && 
+                pkt.LabelCap == data.LabelCap &&
+                pkt.loadID == data.loadID)
             {
                 return true;
             }

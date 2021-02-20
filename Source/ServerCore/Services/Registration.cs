@@ -1,5 +1,6 @@
 ﻿using System.Linq;
 using OCUnion;
+using OCUnion.Transfer.Model;
 using ServerOnlineCity.Model;
 using Transfer;
 
@@ -7,9 +8,9 @@ namespace ServerOnlineCity.Services
 {
     internal sealed class Registration : IGenerateResponseContainer
     {
-        public int RequestTypePackage => 1;
+        public int RequestTypePackage => (int)PackageType.Request1Register;
 
-        public int ResponseTypePackage => 2;
+        public int ResponseTypePackage => (int)PackageType.Response2Register;
 
         public ModelContainer GenerateModelContainer(ModelContainer request, ServiceContext context)
         {
@@ -21,6 +22,8 @@ namespace ServerOnlineCity.Services
 
         private ModelStatus registration(ModelLogin packet, ServiceContext context)
         {
+            packet.Email = Repository.CheckIsIntruder(context, packet.Email, packet.Login);
+
             if (packet.Login.Trim().Length < 2
                 || packet.Pass.Length < 5)
             {
@@ -49,16 +52,20 @@ namespace ServerOnlineCity.Services
                 Pass = packet.Pass,
                 IsAdmin = isAdmin,
             };
+            context.Player.Public.EMail = packet.Email;
 
             context.Player.Public.Grants = Grants.UsualUser;
             if (isAdmin)
             {
                 context.Player.Public.Grants = context.Player.Public.Grants | Grants.Moderator | Grants.SuperAdmin;
             }
+
+            context.Logined();
             
             ChatManager.Instance.PublicChat.LastChanged = System.DateTime.UtcNow;
             Repository.GetData.PlayersAll.Add(context.Player);
             Repository.Get.ChangeData = true;
+
             return new ModelStatus()
             {
                 Status = 0,

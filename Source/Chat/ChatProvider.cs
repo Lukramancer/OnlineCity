@@ -33,7 +33,7 @@ namespace OC.Chat
             My = null;
             var pass = new CryptoProvider().GetHash(password);
 
-            if (!_sessionClient.Login(login, pass))
+            if (!_sessionClient.Login(login, pass, null))
             {
                 logMsg = "Login fail: " + _sessionClient.ErrorMessage;
                 Loger.Log("Chat " + logMsg);
@@ -67,6 +67,7 @@ namespace OC.Chat
 
         public void Disconnected(string msg = "Error Connection.")
         {
+            //зачем этот запрос? Похоже он не заполняет My
             var login = _sessionClient.GetInfo(OCUnion.Transfer.ServerInfoType.Short).My.Login;
             _sessionClient.Disconnect();
         }

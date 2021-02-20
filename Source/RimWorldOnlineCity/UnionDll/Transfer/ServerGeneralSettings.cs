@@ -9,6 +9,15 @@ namespace OCUnion
     [Serializable]
     public struct ServerGeneralSettings
     {
+        /// <summary>
+        /// Включить режим нападения игроков друг на друга онлайн с ограниченным управлением
+        /// </summary>
+        public bool EnablePVP { get; set; }
+
+        /// <summary>
+        /// Запретить менять настройки рассказчика и модификаций в игре
+        /// </summary>
+        public bool DisableGameSettings { get; set; }
 
         /// <summary>
         /// Разрешены ли инценденты
@@ -16,9 +25,19 @@ namespace OCUnion
         public bool IncidentEnable { get; set; }
 
         /// <summary>
-        /// Сколько разрешено инцендентов за 10 игровых дней
+        /// Сколько разрешено инцендентов в очереди
         /// </summary>
-        public int IncidentCountIn10Days { get; set; }
+        public int IncidentCountInOffline { get; set; }
+
+        /// <summary>
+        /// Максимальный коэф. силы инцендентов
+        /// </summary>
+        public int IncidentMaxMult { get; set; }
+
+        /// <summary>
+        /// Минимальная пауза между инциндентами в тиках (1 день = 60000)
+        /// </summary>
+        public int IncidentTickDelayBetween { get; set; }
 
         /// <summary>
         /// Модификатор стоимости найма в процентах
@@ -55,11 +74,34 @@ namespace OCUnion
         /// </summary>
         public int ExchengeAddPrecentCostForFastCargoDelivery { get; set; }
 
+        /// <summary>
+        /// Назначит стартовый год в игре вместо 5500
+        /// </summary>
+        public int StartGameYear { get; set; }
+
+        /// <summary>
+        /// Предупреждение при входе на сервер.
+        /// </summary>
+        public string EntranceWarning { get; set; }
+
+        /// <summary>
+        /// Предупреждение при входе на сервер. На русском.
+        /// </summary>
+        public string EntranceWarningRussian { get; set; }
+
         public ServerGeneralSettings SetDefault()
         {
+            EnablePVP = true;
+
+            DisableGameSettings = false;
+
             IncidentEnable = true;
 
-            IncidentCountIn10Days = 10;
+            IncidentCountInOffline = 2;
+
+            IncidentMaxMult = 10;
+
+            IncidentTickDelayBetween = 60000;
 
             IncidentCostPrecent = 100;
 
@@ -74,6 +116,8 @@ namespace OCUnion
             ExchengeCostCargoDelivery = 1000;
 
             ExchengeAddPrecentCostForFastCargoDelivery = 100;
+
+            StartGameYear = -1;
 
             return this;
         }

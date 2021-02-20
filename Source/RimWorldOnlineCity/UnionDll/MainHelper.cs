@@ -20,13 +20,15 @@ namespace OCUnion
         public static bool OffAllLog = false;
 
         //public static string VersionInfo = $"Version {Assembly.GetExecutingAssembly().FullName}";
-        public static string VersionInfo = "Version 0.03.46a from 2020.08.31";
+        public static string VersionInfo = "Version 0.03.58a from 2021.02.20";
+
+        public static string Key = "";
 
         /// <summary>
         /// Для автоматической проверки: версия клиента должна быть больше или равна версии сервера
         /// </summary>
         //public static readonly long  VersionNum = Assembly.GetExecutingAssembly().GetName().Version.Revision;
-        public static long VersionNum = 30046;
+        public static long VersionNum = 30058;
 
         public static string DefaultIP = DebugMode ? "localhost" : "rimworld.online"; // rimworld.online 194.87.95.90:19020
 

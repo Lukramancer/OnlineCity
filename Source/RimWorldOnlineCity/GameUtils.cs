@@ -327,8 +327,8 @@ namespace RimWorldOnlineCity
                 Find.SignalManager.RegisterReceiver(pawn);
             }
             */
-            if (pawn.Faction != Faction.OfPlayer)
-                pawn.SetFaction(Faction.OfPlayer, null);
+            /*if (pawn.Faction != Faction.OfPlayer)
+                pawn.SetFaction(Faction.OfPlayer);*/
             if (!pawn.IsWorldPawn())
             {
                 Find.WorldPawns.PassToWorld(pawn, PawnDiscardDecideMode.Decide);
@@ -458,13 +458,13 @@ namespace RimWorldOnlineCity
                     if (i == 0) ret = cell;
 
                     //if (MainHelper.DebugMode) 
-                    try 
-                    { 
-                        Loger.Log("Spawn... " + thin.Label); 
-                    } 
-                    catch 
-                    { 
-                        Loger.Log("Spawn... "); 
+                    try
+                    {
+                        Loger.Log("Spawn... " + thin.Label);
+                    }
+                    catch
+                    {
+                        Loger.Log("Spawn... ");
                     }
                     if (thin is Pawn)
                     {
@@ -473,7 +473,7 @@ namespace RimWorldOnlineCity
                         {
                             GenSpawn.Spawn((Pawn)thin, cell, map);
                         }
-                        catch(Exception exp)
+                        catch (Exception exp)
                         {
                             Loger.Log("SpawnList Exception " + thing.Name + ": " + exp.ToString());
                             Thread.Sleep(5);
@@ -501,32 +501,9 @@ namespace RimWorldOnlineCity
             //var factionPirateLoadID = factionPirate.GetUniqueLoadID();
 
             //меняем фракцию на игрока для всех
-            var prisoner = thing.SetFaction(factionColonistLoadID);
+            thing.SetFaction(factionColonistLoadID);
             Thing thin;
-            thin = thing.CreateThing(false);
-            if (MainHelper.DebugMode) Loger.Log("SetFaction...");
-            if (thin.def.CanHaveFaction)
-            {
-                if (MainHelper.DebugMode) Loger.Log("SetFaction...1");
-
-                if (thin is Pawn && (prisoner || freePirate && thin.Faction == Find.FactionManager.OfPlayer))
-                {
-                    //а тут меняем фракцию на пиратов, для тех кому нужно
-                    if (MainHelper.DebugMode) Loger.Log("SetFaction...2");
-                    thin.SetFaction(factionPirate);
-                    if (MainHelper.DebugMode) Loger.Log("SetFaction...3");
-                    var p = thin as Pawn;
-                    if (MainHelper.DebugMode) Loger.Log("SetFaction...4");
-                    if (!freePirate && p.guest != null) p.guest.SetGuestStatus(factionPirate, true);
-                    if (MainHelper.DebugMode) Loger.Log("SetFaction...5");
-                }
-                else
-                {
-                    if (MainHelper.DebugMode) Loger.Log("SetFaction...6");
-                    thin.SetFaction(Find.FactionManager.OfPlayer);
-                    if (MainHelper.DebugMode) Loger.Log("SetFaction...7");
-                }
-            }
+            thin = thing.CreateThing(false, 0, freePirate);
             return thin;
         }
 
@@ -576,7 +553,7 @@ namespace RimWorldOnlineCity
                     thing.HitPoints = state.HitPoints;
                 }
             }
-            
+
             if (thing is Pawn)
             {
                 var pawn = thing as Pawn;
@@ -739,6 +716,89 @@ namespace RimWorldOnlineCity
             Text.Anchor = TextAnchor.MiddleCenter;
             Widgets.Label(canvas, label.ToString());
             Text.Anchor = TextAnchor.UpperLeft;
+        }
+
+        /// <summary>
+        /// Ищем вещь по образцу, и удаляем нужное количество. Удаление начинается с карты с максимальным кол-во вещей.
+        /// </summary>
+        /// <param name="def">Искомый образец</param>
+        /// <param name="destroy">Сколько удалить. Не удаляет нисколько, если нужного количества не будет</param>
+        /// <param name="getMaxByMap">Выводить не общую сумму, а максимальное количество на одной из карт. Влияет на удаление.</param>
+        /// <returns>Количество найденных вещей до удаления. Если это число меньше destroy, значит удаление не было произведено вообще.</returns>
+        public static int FindThings(ThingDef def, int destroy, bool getMaxByMap)
+        {
+            int countAll = 0;
+            int countMax = 0;
+            List<Pair<List<Thing>, int>> maps = new List<Pair<List<Thing>, int>>();
+            for (int i = 0; i < Current.Game.Maps.Count; i++)
+            {
+                var m = Current.Game.Maps[i];
+                if (m.IsPlayerHome)
+                {
+                    List<Thing> things = GameUtils.GetAllThings(m)
+                        .Where(t => t.def == def).ToList();
+                    var c = things.Sum(t => t.stackCount);
+                    maps.Add(new Pair<List<Thing>, int>(things, c));
+                    countAll += c;
+                    if (countMax < c) countMax = c;
+                }
+            }
+            int count = getMaxByMap ? countMax : countAll;
+            if (destroy > 0 && destroy < count)
+            {
+                var destroyProcess = destroy;
+                while (maps.Count > 0 && destroyProcess > 0)
+                {
+                    var m = maps.OrderByDescending(p => p.Second).First();
+                    foreach (Thing thing in m.First)
+                    {
+                        if (thing.stackCount < destroyProcess)
+                        {
+                            destroyProcess -= thing.stackCount;
+                            thing.Destroy();
+                        }
+                        else
+                        {
+                            thing.SplitOff(destroyProcess);
+                            destroyProcess = 0;
+                            break;
+                        }
+                    }
+                }
+            }
+            return count;
+        }
+
+        public static Dictionary<string, Scenario> AllScenarios()
+        {
+            var res = new Dictionary<string, Scenario>();
+
+            ScenarioLister.AllScenarios().ToList();
+
+            foreach (ScenarioDef allDef in DefDatabase<ScenarioDef>.AllDefs)
+            {
+                if (!res.ContainsKey(allDef.defName)) res.Add(allDef.defName, allDef.scenario);
+            }
+            foreach (Scenario item in ScenarioFiles.AllScenariosLocal)
+            {
+                if (!res.ContainsKey(item.fileName)) res.Add(item.fileName, item);
+            }
+            foreach (Scenario item2 in ScenarioFiles.AllScenariosWorkshop)
+            {
+                if (!res.ContainsKey(item2.fileName)) res.Add(item2.fileName, item2);
+            }
+
+            return res;
+        }
+
+        public static bool isBuilding(Thing thing)
+        {
+            if(thing.def.category == ThingCategory.Building && thing.def.destroyable)
+            {
+                if (thing.def.building.IsDeconstructible && thing.def.building.uninstallWork > 0)
+                    return true;
+            }
+            return false;
         }
     }
 }

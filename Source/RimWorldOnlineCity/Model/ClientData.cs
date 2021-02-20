@@ -76,7 +76,12 @@ namespace RimWorldOnlineCity
         /// <summary>
         /// Не реагировать на зависание потока таймера, устанавливается при тяжелых задачах (пока только загрузка ПВП)
         /// </summary>
-        public bool DontChactTimerFail = false;
+        public bool DontCheckTimerFail = false;
+        public int CountReconnectBeforeUpdate = 0;
+        /// <summary>
+        /// Проверка на зависание потока таймера увеличивается по времени, устанавливается при передачи больших пакетов (сохранения)
+        /// </summary>
+        //public bool AddTimeCheckTimerFail = false;
         public int ChatCountSkipUpdate = 0;
         public static bool UIInteraction = false; //говорят уведомления слева сверху мешают, поэтому выключено (можно сделать настройку если кому надо будет)
 
@@ -91,6 +96,8 @@ namespace RimWorldOnlineCity
         public GameAttackHost AttackUsModule { get; set; } = null;
 
         public int DelaySaveGame { get; set; } = 15;
+
+        public bool IsAdmin { get; set; }
 
         public bool DisableDevMode { get; set; }
 
@@ -119,6 +126,15 @@ namespace RimWorldOnlineCity
 
         public bool ApplyChats(ModelUpdateChat updateDate)
         {
+            //переводим сообщения с сервера
+            for (int ic = 0; ic < updateDate.Chats.Count; ic++)
+            {
+                for (int ip = 0; ip < updateDate.Chats[ic].Posts.Count; ip++)
+                {
+                    updateDate.Chats[ic].Posts[ip].Message = ChatController.ServerCharTranslate(updateDate.Chats[ic].Posts[ip].Message);
+                }
+            }
+
             int newPost = 0;
             var newStr = "";
             if (Chats != null)

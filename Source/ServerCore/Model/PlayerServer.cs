@@ -5,6 +5,7 @@ using ServerOnlineCity.Services;
 using System;
 using System.Collections.Generic;
 using Transfer;
+using Transfer.ModelMails;
 using Util;
 
 namespace ServerOnlineCity.Model
@@ -46,10 +47,24 @@ namespace ServerOnlineCity.Model
 
         public DateTime LastUpdateTime;
 
-        public List<ModelMailTrade> Mails = new List<ModelMailTrade>();
+        public List<ModelMail> Mails = new List<ModelMail>();
 
-        [NonSerialized]
-        public long LastTickIncidents;
+        /// <summary>
+        /// Письма из уже ушедшие игроку, но ещё ожидающие сохранения его игры после получения. 
+        /// Если его не будет, то при загрузке мира письма будут переведены назад в Mails для повторной отправки
+        /// </summary>
+        public List<ModelMail> MailsConfirmationSave = new List<ModelMail>();
+
+        /// <summary>
+        /// Письма с командами. Они непосредственно не отправляются игроку, а 
+        /// запускают специальный обработчик перед отправкой Mails, который может создать обычное письмо ModelMail.
+        /// Смотри класс PlayInfo.
+        /// Можно использовать для любого фонового механизма для игрока, который требует обработки раз в 5 секунд (время синхронизации планеты)
+        /// </summary>
+        public List<IFunctionMail> FunctionMails = new List<IFunctionMail>();
+
+        //[NonSerialized]
+        //public long LastTickIncidents;
 
         [NonSerialized]
         public AttackServer AttackData;
@@ -82,6 +97,82 @@ namespace ServerOnlineCity.Model
 
         [NonSerialized]
         private string KeyReconnect2;
+
+        public string IntruderKeys;
+
+        public float StartMarketValue;
+
+        public float StartMarketValuePawn;
+
+        public float LastMarketValue;
+
+        public float LastMarketValuePawn;
+
+        //за обновление
+        public float DeltaMarketValue;
+
+        public float DeltaMarketValuePawn;
+
+        //накапливаем до срабатывания таймера
+        public float SumDeltaGameMarketValue;
+
+        public float SumDeltaGameMarketValuePawn;
+
+        public float SumDeltaRealMarketValue;
+
+        public float SumDeltaRealMarketValuePawn;
+
+        public long SumDeltaRealTicks;
+
+        public long SumDeltaRealSecond; //кол-во секунд реального времени, которое прошло не на паузе
+
+        public long TotalRealSecond; //всего за игрой в этой колонии
+
+        /* пиковые данных с обновлений каждые 5 сек не нужны
+        //за игровой день
+        public float DeltaGameMarketValue => DeltaMarketValue * 60000f / (float)(WLastTick - Public.LastTick);
+
+        public float DeltaGameMarketValuePawn => DeltaMarketValuePawn * 60000f / (float)(WLastTick - Public.LastTick);
+
+        //за реальную минуту
+        public float DeltaRealMarketValue => DeltaMarketValue * 60000f / (float)(WLastUpdateTime - LastUpdateTime).TotalMilliseconds;
+
+        public float DeltaRealMarketValuePawn => DeltaMarketValuePawn * 60000f / (float)(WLastUpdateTime - LastUpdateTime).TotalMilliseconds;
+        */
+
+        //Данные за 1 час и за 15 дней
+        public float StatMaxDeltaGameMarketValue;
+
+        public float StatMaxDeltaGameMarketValuePawn;
+
+        public float StatMaxDeltaRealMarketValue;
+
+        public float StatMaxDeltaRealMarketValuePawn;
+
+        public long StatMaxDeltaRealTicks;
+
+        [NonSerialized]
+        public DateTime StatLastUpdateTime;
+
+        [NonSerialized]
+        public long StatLastTick;
+
+        /// <summary>
+        /// Если false, то не учитывать данные прошлого обновления, т.к. произошел сбой (не было данных) или сервер был перезагружен
+        /// </summary>
+        [NonSerialized]
+        public bool LastUpdateIsGood;
+
+        /// <summary>
+        /// Рабочее поле на период обновление Delta
+        /// </summary>
+        [NonSerialized]
+        public DateTime WLastUpdateTime;
+        /// <summary>
+        /// Рабочее поле на период обновление Delta
+        /// </summary>
+        [NonSerialized]
+        public long WLastTick;
 
         private PlayerServer()
         {
@@ -155,6 +246,20 @@ namespace ServerOnlineCity.Model
             GetKeyReconnect();
             return KeyReconnect1 == testKey
                 || KeyReconnect2 == testKey;
+        }
+
+        /// <summary>
+        /// Полное удаление поселений игрока, не удаляет аккаунт и действия в чате
+        /// </summary>
+        public void AbandonSettlement()
+        {
+            Mails = new List<ModelMail>();
+            MailsConfirmationSave = new List<ModelMail>();
+
+            Repository.DropUserFromMap(Public.Login);
+            Repository.GetSaveData.DeletePlayerData(Public.Login);
+            Public.LastSaveTime = DateTime.MinValue;
+            Repository.Get.ChangeData = true;
         }
     }
 }

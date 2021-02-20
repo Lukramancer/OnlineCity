@@ -1,14 +1,18 @@
-﻿using System.Linq;
+﻿using System;
+using System.Linq;
+using OCUnion;
+using OCUnion.Transfer.Model;
 using ServerOnlineCity.Model;
 using Transfer;
+using Transfer.ModelMails;
 
 namespace ServerOnlineCity.Services
 {
     internal sealed class SendThings : IGenerateResponseContainer
     {
-        public int RequestTypePackage => 15;
+        public int RequestTypePackage => (int)PackageType.Request15;
 
-        public int ResponseTypePackage => 16;
+        public int ResponseTypePackage => (int)PackageType.Response16;
 
         public ModelContainer GenerateModelContainer(ModelContainer request, ServiceContext context)
         {
@@ -38,11 +42,14 @@ namespace ServerOnlineCity.Services
 
                 packet.From = data.PlayersAll.Select(p => p.Public).FirstOrDefault(p => p.Login == packet.From.Login);
                 packet.To = toPlayer.Public;
+                packet.Created = DateTime.UtcNow;
+                packet.NeedSaveGame = true;
             }
             lock (toPlayer)
             {
                 toPlayer.Mails.Add(packet);
             }
+            Loger.Log($"Mail SendThings {packet.From.Login}->{packet.To.Login} {packet.ContentString()}");
             return new ModelStatus()
             {
                 Status = 0,

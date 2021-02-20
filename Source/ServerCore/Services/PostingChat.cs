@@ -8,14 +8,15 @@ using ServerOnlineCity.Model;
 using ServerOnlineCity.ChatService;
 using OCUnion.Transfer.Types;
 using OCUnion.Common;
+using OCUnion.Transfer.Model;
 
 namespace ServerOnlineCity.Services
 {
     public sealed class PostingChat : IGenerateResponseContainer
     {
-        public int RequestTypePackage => 19;
+        public int RequestTypePackage => (int)PackageType.Request19PostingChat;
 
-        public int ResponseTypePackage => 20;
+        public int ResponseTypePackage => (int)PackageType.Response20PostingChat;
 
         public ModelContainer GenerateModelContainer(ModelContainer request, ServiceContext context)
         {
@@ -28,6 +29,11 @@ namespace ServerOnlineCity.Services
 
         public ModelStatus GetModelStatus(ModelPostingChat pc, ServiceContext context)
         {
+            if (context.PossiblyIntruder)
+            {
+                context.Disconnect("Possibly intruder");
+                return null;
+            }
             var timeNow = DateTime.UtcNow;
             if (string.IsNullOrEmpty(pc.Message))
             {
